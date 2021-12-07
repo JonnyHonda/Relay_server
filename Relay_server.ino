@@ -12,7 +12,7 @@
 #include <WiFiUdp.h>
 #include <Wire.h>
 #include <EEPROM.h>
-
+#include <string>
 #define ESP8266_GPIO4    4 // Relay control.
 #define ESP8266_GPIO5    5 // Optocoupler input.
 
@@ -27,6 +27,7 @@ int counter = 0;
 int addr = 0;
 volatile int inputState = 0;    // Input pin state.
 volatile int relayState = 0;    // Relay state
+volatile int relayDelayTime = relayDelayInterval;    // Relay state
  
 String wifiMacString;
 String wifiIPString;
@@ -51,8 +52,9 @@ void handleRoot() {
                 <p>Time: %s</p>\
                 <p>Uptime: %02d:%02d:%02d</p>\
                 <p>Input State: %d</p>\
+                <p>Relay Delay Time: %d seconds</p>\
               </body>\
-            </html>", timeString, hr, min % 60, sec % 60, inputState
+            </html>", timeString, hr, min % 60, sec % 60, inputState, relayDelayTime /1000
           );
   httpServer.send(200, "text/html", page);
 }
@@ -64,14 +66,9 @@ const String postForms = "<html>\
     </style>\
   </head>\
   <body>\
-    <h1>POST plain text to /postplain/</h1><br>\
-    <form method=\"post\" enctype=\"text/plain\" action=\"/postplain/\">\
-      <input type=\"text\" name=\'{\"hello\": \"world\", \"trash\": \"\' value=\'\"}\'><br>\
-      <input type=\"submit\" value=\"Submit\">\
-    </form>\
-    <h1>POST form data to /postform/</h1><br>\
+    <h1>Refresh Frequency</h1><br>\
     <form method=\"post\" enctype=\"application/x-www-form-urlencoded\" action=\"/postform/\">\
-      <input type=\"text\" name=\"hello\" value=\"world\"><br>\
+      <input type=\"text\" name=\"frequency\" value=\""+ String(relayDelayTime / 1000) + "\"><br>\
       <input type=\"submit\" value=\"Submit\">\
     </form>\
   </body>\
@@ -91,6 +88,10 @@ void handleForm() {
     String message = "POST form was:\n";
     for (uint8_t i = 0; i < httpServer.args(); i++) {
       message += " " + httpServer.argName(i) + ": " + httpServer.arg(i) + "\n";
+      if(httpServer.argName(i) == "frequency") {
+        relayDelayTime = httpServer.arg(i).toInt() * 1000;
+         Serial.println(relayDelayTime);
+      }
     }
     httpServer.send(200, "text/plain", message);
     digitalWrite(LED_BUILTIN, 0);
@@ -119,7 +120,7 @@ void setup()
     Serial.begin(115200);
       int a;
  int eeAddress = 0; 
- EEPROM.begin(512);
+  EEPROM.begin(512);
   EEPROM.get(eeAddress, a);
  
   Serial.println(a);
@@ -163,15 +164,14 @@ void setup()
 
 void loop()
 {   
-  
-  Serial.println(inputState);
+   Serial.println(inputState);
     if(digitalRead(ESP8266_GPIO5) == 0 ) {
       digitalWrite(ESP8266_GPIO4, 0);
       inputState = 1;
       rdi  = millis();
       }
 
-     if (millis() > (relayDelayInterval + rdi)) {
+     if (millis() > (relayDelayTime + rdi)) {
         digitalWrite(ESP8266_GPIO4, 1);
         inputState = 0;
         rdi  = millis();
